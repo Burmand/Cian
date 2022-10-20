@@ -1,0 +1,101 @@
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import time
+import pandas as pd
+
+s = Service('C:\Program Files (x86)\chromedriver.exe')
+options = Options()
+options.add_argument('--ignore-certificate-errors')
+options.add_argument('--ignore-ssl-errors')
+driver = webdriver.Chrome(service=s, options=options)
+
+df = pd.DataFrame(columns=['Price','Address','Metro', 'Summary', 'General Information', 'Building Information'])
+
+URL = 'https://www.cian.ru/cat.php?deal_type=sale&engine_version=2&offer_type=flat&region=1&room1=1&room2=1&room3=1&room4=1&room5=1&room6=1&room9=1'
+
+driver.get(URL)
+
+# Cookie acceptance
+cookie = driver.find_element(By.CSS_SELECTOR, "[data-name='CookiesNotification']")
+cookie_button = cookie.find_element(By.TAG_NAME, 'button')
+cookie_button.click()
+
+try:
+    # Take the search page
+    SearchResults = WebDriverWait(driver, 5).until(
+        EC.presence_of_element_located((By.CSS_SELECTOR, "[data-name='SearchEngineResultsPage']"))
+    )
+    articles = SearchResults.find_elements(By.CLASS_NAME, "_93444fe79c--avatar--WC_Vu")
+
+    # Go through every article on the page
+    for article in articles:
+        article_data = {}
+        # Click on the article   
+        article.click()
+        #time.sleep(2)
+
+        # Swith to the second tab
+        window_after = driver.window_handles[1]
+        driver.switch_to.window(window_after)
+
+        # Take the price
+        element = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "[itemprop='price']"))
+            )
+        article_data['Price'] = element.text
+
+        # Take the address
+        element = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "a10a3f92e9--address--F06X3"))
+            )
+        article_data['Address'] = element.text.replace("На карте", "")
+
+        # Take the metro station
+        element = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "a10a3f92e9--underground_link--Sxo7K"))
+            )
+        article_data['Metro'] = element.text
+
+        # Take the overall area
+        element = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "a10a3f92e9--info-block--kXrDj"))
+            )
+        article_data['Summary'] = element.text.replace("\n",";")
+
+        # Take the general information (Doesn't appear in every article)
+        try:
+            element = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "a10a3f92e9--list--jHl8z"))
+            )
+            article_data['General Information'] = element.text.replace("\n",";")
+        except Exception:
+            pass
+
+        # Take the information about the building (Doesn't appear in every article)
+        try:
+            element = WebDriverWait(driver, 15).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "a10a3f92e9--column--XINlk"))
+            )
+            article_data['Building Information'] = element.text.replace("\n",";")
+        except Exception:
+            pass
+
+
+        print(article_data)
+        #new_row = pd.DataFrame({'Area':[element.text]})
+        df = pd.concat([df, pd.DataFrame(article_data, index=[0])], ignore_index=True)
+
+        # Close the second tab
+        driver.close()
+
+        # Switch to the first tab
+        window_default = driver.window_handles[0]
+        driver.switch_to.window(window_default)
+        #time.sleep(0.5)
+finally:
+    df.to_csv('Output.csv', index=False)
+    driver.quit()
